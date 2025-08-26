@@ -1,0 +1,49 @@
+name: Release on Merge
+
+on:
+  pull_request:
+    types: [closed]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    if: >-
+      ${{ github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'master' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout merge commit
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.merge_commit_sha }}
+          fetch-depth: 0
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo/target
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release --locked --verbose
+
+      - name: Package artifact (tar.gz)
+        run: |
+          bin_name=http2socks-proxy
+          out_name="${bin_name}-linux-x86_64.tar.gz"
+          tar -C target/release -czf "$out_name" "$bin_name"
+          echo "ASSET_NAME=$out_name" >> $GITHUB_ENV
+
+      - name: Create GitHub Release and upload asset
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: autorel-${{ github.event.pull_request.number }}-${{ github.event.pull_request.merge_commit_sha }}
+          name: Auto Release PR #${{ github.event.pull_request.number }}
+          body: |
+            Automated release for merged PR #${{ github.event.pull_request.number }}.
+            Commit: ${{ github.event.pull_request.merge_commit_sha }}
+          files: |
+            ${{ env.ASSET_NAME }}
+
